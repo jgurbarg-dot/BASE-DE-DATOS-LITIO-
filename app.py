@@ -1,11 +1,13 @@
 import streamlit as st
+import pandas as pd
+import io
 import math
 
 # Configuración de la página
 st.set_page_config(page_title="Sistema Experto - Procesamiento de Litio", layout="wide")
 
 def base_datos_litio_streamlit():
-    # Base de datos completa (tal cual la pasaste en las capturas)
+    # Base de datos completa
     compuestos = {
         "Carbonato de Litio (Li2CO3)": {
             "Físicas": {"Densidad (ρ)": "2.11 g/cm³", "PM": "73.89 g/mol", "Estado": "Sólido", "Color": "Blanco", "Llama": "Rojo Carmín", "Fusión": "723 °C", "Ebullición": "1310 °C (Descomp.)", "Refracción": "1.428", "Granulometría": "90% < 100 μm", "Higroscopicidad": "Baja"},
@@ -81,7 +83,7 @@ def base_datos_litio_streamlit():
         },
         "Hidróxido de Potasio (KOH)": {
             "Físicas": {"Densidad (ρ)": "2.04 g/cm³", "PM": "56.11 g/mol", "Estado": "Sólido", "Color": "Blanco", "Llama": "Violeta", "Fusión": "360 °C", "Ebullición": "1327 °C", "Refracción": "1.34", "Granulometría": "Lentejas", "Higroscopicidad": "Extrema"},
-            "Químicas": {"Reacción": "KOH → K+ + OH-", "Kps": "Alto", "Pitzer_beta0": 0.13, "Pitzer_beta1": 0.32, "Precipita": "No", "Error_Ideal": "25%"},
+            "Químicas": {"Reacción": "KOH → K+ + OH-", "Kps": "Alto", "Pitzer_beta0": 0.13, "Kps": "Alto", "Pitzer_beta1": 0.32, "Precipita": "No", "Error_Ideal": "25%"},
             "Térmicas": {"Cp": "1.16 J/g*K", "ΔH_dis": "-57.1 kJ/mol", "ΔH_reac": "N/A", "k": "0.45 W/m*K", "L_evap": "N/A", "T_descomp": "Estable", "Estabilidad": "Alta", "Expansión": "Variable", "Calor_cryst": "-45 kJ/mol", "Ec_Sol": "S(T)=0.5T+100", "Sol_25C": "112 g/100mL"},
             "Transporte": {"μ": "1.3 cP", "D": "1.9e-9 m²/s", "Cond_elec": "Muy Alta", "Mov_ion": "7.6e-8 (K+)", "Num_transp": "0.27 (K+)", "kL": "N/A", "Sediment": "N/A"}
         }
@@ -127,6 +129,96 @@ def base_datos_litio_streamlit():
                 st.write(f"**{k}:** {v}")
 
     st.markdown("---")
+    
+    # ------------------ SECCIÓN DE EXPORTACIÓN A EXCEL ------------------
+    st.subheader("📥 Exportar Base de Datos Completa")
+    st.write("Presiona el botón para descargar toda la base de datos mapeada con sus respectivas categorías.")
+
+    # Función interna para procesar el diccionario y darle estilo profesional al Excel
+    def generar_excel_completo(base_datos):
+        filas_procesadas = []
+        
+        for compuesto, categorias in base_datos.items():
+            registro = {"Compuesto Química": compuesto}
+            for nombre_cat, propiedades in categorias.items():
+                for sub_prop, valor in propiedades.items():
+                    # Formamos la columna respetando Jerarquía (Ej: Físicas_Densidad (ρ))
+                    nombre_columna = f"{nombre_cat}_{sub_prop}"
+                    registro[nombre_columna] = valor
+            filas_procesadas.append(registro)
+            
+        df_completo = pd.DataFrame(filas_procesadas)
+        
+        # Buffer de memoria para no escribir en disco
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df_completo.to_excel(writer, index=False, sheet_name='Base de Datos Completa')
+            
+            # Formateo estético con OpenPyXL
+            workbook = writer.book
+            worksheet = writer.sheets['Base de Datos Completa']
+            
+            from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+            
+            # Paleta de color corporativa azul oscuro desaturado (ingeniería/química)
+            header_fill = PatternFill(start_color="1F497D", end_color="1F497D", fill_type="solid")
+            header_font = Font(name="Segoe UI", size=11, bold=True, color="FFFFFF")
+            data_font = Font(name="Segoe UI", size=10)
+            
+            thin_border = Border(
+                left=Side(style='thin', color='E0E0E0'),
+                right=Side(style='thin', color='E0E0E0'),
+                top=Side(style='thin', color='E0E0E0'),
+                bottom=Side(style='thin', color='E0E0E0')
+            )
+            
+            # Estilo para filas de datos intercaladas (Zebra striping)
+            zebra_fill = PatternFill(start_color="F9FAFB", end_color="F9FAFB", fill_type="solid")
+            
+            # Formatear la fila de encabezados
+            for col_num in range(1, worksheet.max_column + 1):
+                cell = worksheet.cell(row=1, column=col_num)
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            worksheet.row_dimensions[1].height = 28
+                
+            # Formatear celdas de datos
+            for row in range(2, worksheet.max_row + 1):
+                worksheet.row_dimensions[row].height = 20
+                es_par = (row % 2 == 0)
+                for col in range(1, worksheet.max_column + 1):
+                    cell = worksheet.cell(row=row, column=col)
+                    cell.font = data_font
+                    cell.border = thin_border
+                    if es_par:
+                        cell.fill = zebra_fill
+                    
+                    # Alineaciones según columna
+                    if col == 1:
+                        cell.alignment = Alignment(horizontal="left", vertical="center")
+                    else:
+                        cell.alignment = Alignment(horizontal="center", vertical="center")
+                        
+            # Autoajustar las columnas dinámicamente para que no aparezca el error '###'
+            for col in worksheet.columns:
+                max_len = max(len(str(cell.value or '')) for cell in col)
+                col_letter = col[0].column_letter
+                worksheet.column_dimensions[col_letter].width = max(max_len + 4, 15)
+                
+        return output.getvalue()
+
+    # Generar binario del Excel
+    datos_excel = generar_excel_completo(compuestos)
+
+    # Botón nativo de descarga en la interfaz
+    st.download_button(
+        label="Descargar Base de Datos en Excel (.xlsx)",
+        data=datos_excel,
+        file_name="base_datos_procesamiento_litio.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
     st.caption("Desarrollado para análisis técnico en ingeniería química.")
 
 if __name__ == "__main__":
